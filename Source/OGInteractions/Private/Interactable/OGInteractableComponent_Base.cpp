@@ -4,7 +4,6 @@
 #include "Interactable/OGInteractableComponent_Base.h"
 
 #include "Components/ShapeComponent.h"
-#include "Interactable/OGInteractableInterface.h"
 #include "Interactor/OGInteractorComponent.h"
 #include "Utilities/OGInteractions_FunctionLibrary.h"
 #include "Utilities/OGInteractions_Types.h"
@@ -12,13 +11,11 @@
 UOGInteractableComponent_Base::UOGInteractableComponent_Base()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(true);
 }
 
 void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation)
 {
-	// We expect the actor that owns the InteractableComponent to implement the CGInteractable interface, this ensures the component can use any of the interface functions on any actor
-	ensure(GetOwner() && GetOwner()->Implements<UOGInteractableInterface>());
-
 	// These are initialized via inputs always
 	QueryVolume = InQueryVolume;
 	PhysicalRepresentation = InPhysicalRepresentation;
@@ -45,6 +42,8 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 		PhysicalRepresentation->ComponentTags.Add(OccamsGamkit::Interactions::InteractableComponent::QueryVolume.GetTag().GetTagName());
 		PhysicalRepresentation->ComponentTags.AddUnique(IdToUse);
 	}
+
+	ensureAlwaysMsgf(QueryVolume || PhysicalRepresentation, TEXT("UOGInteractableComponent_Base::Initialize - Needs either a volume or a mesh"));
 
 	/*
 	 * TODO: Only raycast has been implemented
@@ -76,46 +75,56 @@ bool UOGInteractableComponent_Base::TryInteract(AActor* Interactor)
 	return false;
 }
 
-void UOGInteractableComponent_Base::TriggerHover_Implementation(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerHover(AActor* InInstigator)
 {
 	SetUIState(GetHoverStateFor(InInstigator)); // TODO: Why did we have hover prioritized?
 }
-void UOGInteractableComponent_Base::TriggerHoverEnd_Implementation(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerHoverEnd(AActor* InInstigator)
 {
 	SetUIState(GetDefaultStateForLocalPlayer());
 }
 
-void UOGInteractableComponent_Base::TriggerFocus_Implementation(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerFocus(AActor* InInstigator)
 {
 	SetUIState(GetFocusStateFor(InInstigator));
 }
-void UOGInteractableComponent_Base::TriggerFocusEnd_Implementation(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerFocusEnd(AActor* InInstigator)
 {
 	SetUIState(GetDefaultStateForLocalPlayer());
 }
 
-void UOGInteractableComponent_Base::SetDisabled_Implementation(bool bInDisabled)
+void UOGInteractableComponent_Base::TriggerUIStateDefaultRefresh()
 {
-	bDisabled = bInDisabled;
-	// if (bDisabled)
-	// {
-	// 	SetUIState(EOG_UIState::Disabled);
-	// }
-	// else
-	// {
-	// 	SetUIState(EOG_UIState::None);
-	// }
+	SetUIState(GetDefaultStateForLocalPlayer());
 }
 
-// void UOGInteractableComponent_Base::SetHoverStateFunction(TFunction<EOG_UIState()> InFunction)
-// {
-// 	GetHoverStateDelegate.
-// 	//  = InFunction;
-// 	// GetHoverStateDelegate.BindLambda([InFunction]()
-// 	// {
-// 	// 	return InFunction();
-// 	// });
-// }
+void UOGInteractableComponent_Base::SetDisabled(bool bInDisabled)
+{
+	if (bInDisabled == bDisabled)
+		return;
+
+	bDisabled = bInDisabled;
+
+	UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
+	if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
+
+	if (InteractionQueryTarget)
+	{
+		if (bDisabled)
+		{
+			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Ignore);
+		}
+		else
+		{
+			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Block);
+		}
+	}
+
+	if (ensureAlwaysMsgf(OnDisabledChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::SetDisabled - Delegate for %s has not been set"), *GetNameSafe(this)))
+	{
+		OnDisabledChangedDelegate.Execute(bDisabled);
+	}
+}
 
 FGameplayTag UOGInteractableComponent_Base::GetHoverStateFor(AActor* Interactor) const
 {
@@ -174,19 +183,13 @@ void UOGInteractableComponent_Base::SetOnInteractFailedDelegate(const FOnInterac
 	OnInteractFailedDelegate = OnInteractFailed;
 }
 
+void UOGInteractableComponent_Base::SetOnDisabledChangedDelegate(const FOnChangeStateNotificationDelegate& OnDisabledChanged)
+{
+	OnDisabledChangedDelegate = OnDisabledChanged;
+}
+
 const FGameplayTag& UOGInteractableComponent_Base::SetUIState(const FGameplayTag& NewState)
 {
-	// if (bDisabled)
-	// {
-	// 	if (GetUIState() != EOG_UIState::Disabled)
-	// 	{
-	// 		UIState = EOG_UIState::Disabled;
-	// 	}
-	// }
-	// TODO: What was the case where we had this check-state? Hover doesn't override Focus?
-	// You shouldn't be able to HOVER on DISABLED
-	// else if (CheckUIStatePriority(UIState, Priority))
-	// {
 	if (UIState != NewState)
 	{
 		UIState = NewState;

@@ -16,6 +16,8 @@ DECLARE_DYNAMIC_DELEGATE_OneParam(FOnInteractionEventDelegate, AActor*, Interact
 DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(FGameplayTag, FGetUIStateDelegate, AActor*, Interactor);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnUIStateChangedDelegate, const FGameplayTag&, NewUIState);
 
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnChangeStateNotificationDelegate, bool, bNewState);
+
 /*
  * The intent of this Component is to listen to various vectors of interaction (raycast/mouse/overlap) and surface the outcomes
  * through to a identical API via UI-style naming conventions:
@@ -61,17 +63,20 @@ public:
 	//// Triggers to change UI State, called from InteractorComponent
 
 	// Hover, mirrors UI "Hover", as in your "mouse" (i.e., interaction vector) has intersected the interactable
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	UFUNCTION(BlueprintCallable)
 	void TriggerHover(AActor* InInstigator);
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	UFUNCTION(BlueprintCallable)
 	void TriggerHoverEnd(AActor* InInstigator);
 
 	// Hover, mirrors UI "Focus", as in you have "clicked" (i.e., interacted) with an interactable that can be selected
 	// (This is not wired up by default, your input component will have to hook into this logic)
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	UFUNCTION(BlueprintCallable)
 	void TriggerFocus(AActor* InInstigator);
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	UFUNCTION(BlueprintCallable)
 	void TriggerFocusEnd(AActor* InInstigator);
+
+	UFUNCTION(BlueprintCallable)
+	void TriggerUIStateDefaultRefresh();
 
 	//// End Triggers
 	////////////////////////////////////////
@@ -139,6 +144,11 @@ public:
 	UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Delegate: OnInteractFailed"))
 	void SetOnInteractFailedDelegate(const FOnInteractionEventDelegate& OnInteractFailed);
 	
+	UPROPERTY()
+	FOnChangeStateNotificationDelegate OnDisabledChangedDelegate;
+	UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Delegate: OnDisabledChanged"))
+	void SetOnDisabledChangedDelegate(const FOnChangeStateNotificationDelegate& OnDisabledChanged);
+	
 	//// End Behavior Delegates, CanInteract, & Interaction Outcomes
 	////////////////////////////////////////
 #pragma endregion Behavior_Delegates
@@ -147,7 +157,7 @@ public:
 
 	// Extend this in your own code to handle the Disabled case
 	// I would expect this to involve disabling collision, etc
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	UFUNCTION(BlueprintCallable)
 	void SetDisabled(bool bInDisabled);
 
 	// When setting FGameplayTag, priority determines what level of state you can clear to replace
