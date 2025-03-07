@@ -20,7 +20,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="PlayerController", meta=(DefaultToSelf="WorldContextObject"))
 	static APlayerController* GetLocalPlayerController(const UObject* WorldContextObject);
 
-    static UOGInteractorComponent* GetInteractorComponent(AActor* Actor);
-    static UOGInteractorComponent* GetInteractorComponent(APlayerController* PlayerController);
-    static UOGInteractorComponent* GetInteractorComponent(APawn* Pawn);
+    static UOGInteractorComponent* GetInteractorComponent(const AActor* Actor);
+    static UOGInteractorComponent* GetInteractorComponent(const APlayerController* PlayerController);
+    static UOGInteractorComponent* GetInteractorComponent(const APawn* Pawn);
 };

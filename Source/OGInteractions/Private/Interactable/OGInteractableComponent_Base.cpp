@@ -5,6 +5,7 @@
 
 #include "Components/ShapeComponent.h"
 #include "Interactor/OGInteractorComponent.h"
+#include "Net/UnrealNetwork.h"
 #include "Utilities/OGInteractions_FunctionLibrary.h"
 #include "Utilities/OGInteractions_Types.h"
 
@@ -14,7 +15,23 @@ UOGInteractableComponent_Base::UOGInteractableComponent_Base()
 	SetIsReplicatedByDefault(true);
 }
 
-void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation)
+void UOGInteractableComponent_Base::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UOGInteractableComponent_Base, bDisabled);
+}
+
+void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation,
+	FCanInteractDelegate CanInteract,
+	FOnInteractionEventDelegate OnInteract,
+	FOnInteractionEventDelegate OnInteractFailed,
+	FOnChangeStateNotificationDelegate OnDisabledChanged,
+	FOnUIStateChangedDelegate OnUIStateChanged,
+	FGetUIStateDelegate GetUIState_OnHover,
+	FGetUIStateDelegate GetUIState_OnFocus,
+	FGetUIStateDelegate GetUIState_OnReturnToDefault
+)
 {
 	// These are initialized via inputs always
 	QueryVolume = InQueryVolume;
@@ -58,75 +75,109 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 		// https://forums.unrealengine.com/t/use-box-collision-with-cursor-over/375072/2
 	}
 	*/
+	InitializeDelegates(
+		CanInteract,
+		OnInteract,
+		OnInteractFailed,
+		OnDisabledChanged,
+		OnUIStateChanged,
+		GetUIState_OnHover,
+		GetUIState_OnFocus,
+		GetUIState_OnReturnToDefault
+	);
 }
 
-// TODO: This is a basic interact, but we may want to designate a separate path for different keys
-// Should this implementation...
-// Well, what does "interact" mean to an actor?
-bool UOGInteractableComponent_Base::TryInteract(AActor* Interactor)
+void UOGInteractableComponent_Base::InitializeDelegates(FCanInteractDelegate CanInteract, FOnInteractionEventDelegate OnInteract, FOnInteractionEventDelegate OnInteractFailed, FOnChangeStateNotificationDelegate OnDisabledChanged, FOnUIStateChangedDelegate OnUIStateChanged, FGetUIStateDelegate GetUIState_OnHover, FGetUIStateDelegate GetUIState_OnFocus, FGetUIStateDelegate GetUIState_OnReturnToDefault)
 {
+
+	if (CanInteract.IsBound())					{ SetCanInteractDelegate(CanInteract); }
+	if (OnInteract.IsBound())					{ SetOnInteractDelegate(OnInteract); }
+	if (OnInteractFailed.IsBound()) 			{ SetOnInteractFailedDelegate(OnInteractFailed); }
+	if (OnDisabledChanged.IsBound())			{ SetOnDisabledChangedDelegate(OnDisabledChanged); }
+	if (OnUIStateChanged.IsBound())				{ SetOnUIStateChangedDelegate(OnUIStateChanged); }
+	if (GetUIState_OnHover.IsBound())			{ SetOnHoverDelegate(GetUIState_OnHover); }
+	if (GetUIState_OnFocus.IsBound())			{ SetOnFocusDelegate(GetUIState_OnFocus); }
+	if (GetUIState_OnReturnToDefault.IsBound()) { SetOnReturnToDefaultDelegate(GetUIState_OnReturnToDefault); }
+
+	if (OnReturnToDefaultDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
+	{
+		TriggerUIStateDefaultRefresh();
+	}
+}
+
+
+// TODO: This is a basic interact, but we may want to add a parameter for what Kind of interact
+//		 (Like, should this component do the work for Overcooked? A->Grab, X->Use? Would/could that work?
+//		 Perhaps the "CanInteract/TryInteract" should live separately from this InteractableComponent?
+//		 (Separate the Logic from the Volume, so then you'd pass a group of delegates for X, A, and Y on the same object)
+void UOGInteractableComponent_Base::TryInteract_Implementation(AActor* Interactor)
+{
+	if (!Interactor)
+		return;
+
 	if (CanInteract(Interactor))
 	{
-		TryExecuteInteractEventDelegate(OnInteractDelegate, Interactor, "OnInteract");
-		return true;
+		TryExecute_OnInteractDelegate(Interactor);
 	}
-	
-	TryExecuteInteractEventDelegate(OnInteractFailedDelegate, Interactor, "OnInteractFailed");
-	return false;
+	else
+	{
+		TryExecute_OnInteractFailedDelegate(Interactor);
+	}
 }
 
-void UOGInteractableComponent_Base::TriggerHover(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerHover(const AActor* InInstigator)
 {
 	SetUIState(GetHoverStateFor(InInstigator)); // TODO: Why did we have hover prioritized?
 }
-void UOGInteractableComponent_Base::TriggerHoverEnd(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerHoverEnd(const AActor* InInstigator)
 {
 	SetUIState(GetDefaultStateForLocalPlayer());
 }
 
-void UOGInteractableComponent_Base::TriggerFocus(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerFocus(const AActor* InInstigator)
 {
 	SetUIState(GetFocusStateFor(InInstigator));
 }
-void UOGInteractableComponent_Base::TriggerFocusEnd(AActor* InInstigator)
+void UOGInteractableComponent_Base::TriggerFocusEnd(const AActor* InInstigator)
 {
 	SetUIState(GetDefaultStateForLocalPlayer());
 }
 
 void UOGInteractableComponent_Base::TriggerUIStateDefaultRefresh()
 {
-	SetUIState(GetDefaultStateForLocalPlayer());
+	// This should check local player for Candidate/Focus and then Set to the correct state
+	const auto* LocalPlayer = UOGInteractions_FunctionLibrary::GetLocalPlayerController(this);
+	const auto* LocalPawn = LocalPlayer ? LocalPlayer->GetPawn() : nullptr;
+	if (const auto* Interactor = UOGInteractions_FunctionLibrary::GetInteractorComponent(LocalPawn))
+	{
+		if (Interactor->GetInteractionFocus() == this)
+		{
+			SetUIState(GetFocusStateFor(LocalPawn));
+		}
+		else if (Interactor->GetInteractionCandidate() == this)
+		{
+			SetUIState(GetHoverStateFor(LocalPawn));
+		}
+		else
+		{
+			SetUIState(GetDefaultStateForLocalPlayer());
+		}
+	}
 }
 
-void UOGInteractableComponent_Base::SetDisabled(bool bInDisabled)
+void UOGInteractableComponent_Base::SetDisabled_Implementation(bool bInDisabled)
 {
 	if (bInDisabled == bDisabled)
 		return;
 
 	bDisabled = bInDisabled;
-
-	UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
-	if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
-
-	if (InteractionQueryTarget)
+	if (GetOwnerRole() == ROLE_Authority)
 	{
-		if (bDisabled)
-		{
-			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Ignore);
-		}
-		else
-		{
-			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Block);
-		}
-	}
-
-	if (ensureAlwaysMsgf(OnDisabledChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::SetDisabled - Delegate for %s has not been set"), *GetNameSafe(this)))
-	{
-		OnDisabledChangedDelegate.Execute(bDisabled);
+		OnRep_OnDisabledChanged();
 	}
 }
 
-FGameplayTag UOGInteractableComponent_Base::GetHoverStateFor(AActor* Interactor) const
+FGameplayTag UOGInteractableComponent_Base::GetHoverStateFor(const AActor* Interactor) const
 {
 	return TryExecuteGetterDelegate(OnHoverDelegate, Interactor, "OnHover");
 }
@@ -136,7 +187,7 @@ void UOGInteractableComponent_Base::SetOnHoverDelegate(const FGetUIStateDelegate
 	OnHoverDelegate = GetUIState_OnHover;
 }
 
-FGameplayTag UOGInteractableComponent_Base::GetFocusStateFor(AActor* Interactor) const
+FGameplayTag UOGInteractableComponent_Base::GetFocusStateFor(const AActor* Interactor) const
 {
 	return TryExecuteGetterDelegate(OnFocusDelegate, Interactor, "OnFocus");
 }
@@ -248,7 +299,7 @@ void UOGInteractableComponent_Base::OnUIStateChange() const
 ////////////////////////////////////////
 //// Begin Helpers
 	
-FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, AActor* Interactor, FString CallingFunction) const
+FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, const AActor* Interactor, FString CallingFunction) const
 {
 	if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::GetterDelegate - %s Delegate for %s has not been set"), *CallingFunction, *GetNameSafe(this)))
 	{
@@ -257,12 +308,44 @@ FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetU
 	return FGameplayTag::EmptyTag;
 }
 
-void UOGInteractableComponent_Base::TryExecuteInteractEventDelegate(const FOnInteractionEventDelegate& InDelegate, AActor* Interactor, FString CallingFunction) const
+void UOGInteractableComponent_Base::TryExecute_OnInteractDelegate(AActor* Interactor) const
 {
-	if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::TryExecuteInteractEvent - %s Delegate for %s has not been set"), *CallingFunction, *GetNameSafe(this)))
+	if (ensureAlwaysMsgf(OnInteractDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::TryExecuteOnInteractDelegate - Delegate for %s has not been set"), *GetNameSafe(this)))
 	{
-		InDelegate.Execute(Interactor);
+		OnInteractDelegate.Execute(Interactor);
 	}
+}
+void UOGInteractableComponent_Base::TryExecute_OnInteractFailedDelegate(AActor* Interactor) const
+{
+	if (ensureAlwaysMsgf(OnInteractFailedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::TryExecuteOnInteractFailedDelegate - Delegate for %s has not been set"), *GetNameSafe(this)))
+	{
+		OnInteractFailedDelegate.Execute(Interactor);
+	}
+}
+
+void UOGInteractableComponent_Base::OnRep_OnDisabledChanged()
+{
+	UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
+	if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
+
+	// Needs to be replicated
+	if (InteractionQueryTarget)
+	{
+		if (bDisabled)
+		{
+			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Ignore);
+		}
+		else
+		{
+			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Block);
+		}
+	}
+
+	if (ensureAlwaysMsgf(OnDisabledChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::SetDisabled - Delegate for %s has not been set"), *GetNameSafe(this)))
+	{
+		OnDisabledChangedDelegate.Execute(bDisabled);
+	}
+	TriggerUIStateDefaultRefresh();
 }
 
 //// End Helpers

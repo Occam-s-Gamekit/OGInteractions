@@ -13,17 +13,25 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUIStateChange, const FGameplayTag&,
 DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(bool, FCanInteractDelegate, const AActor*, Interactor);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnInteractionEventDelegate, AActor*, Interactor);
 
-DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(FGameplayTag, FGetUIStateDelegate, AActor*, Interactor);
+DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(FGameplayTag, FGetUIStateDelegate, const AActor*, Interactor);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnUIStateChangedDelegate, const FGameplayTag&, NewUIState);
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnChangeStateNotificationDelegate, bool, bNewState);
 
 /*
  * The intent of this Component is to listen to various vectors of interaction (raycast/mouse/overlap) and surface the outcomes
- * through to a identical API via UI-style naming conventions:
+ * through to an identical API via UI-style naming conventions:
  *	 Hover - Your interaction vector is engaging with this component
  *	 Focus - (if implemented) your Pawn has selected this (like a row in Excel)
  *	 Default - No interactions are occuring with this component
+ *
+ * TryInteract calls to server, and it calls its delegates on the Server as well
+ *		- OnInteract, OnInteractFailed
+ *
+ *	The InteractorComponent runs locally only, and interacts with the Trigger functions.
+ *	These call the OnUIStateChange functions, which only run locally:
+ *		- GetOnHoverState, GetOnFocusState, GetOnReturnToDefault
+ *	
  */
 UCLASS(Blueprintable, ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class OGINTERACTIONS_API UOGInteractableComponent_Base : public UPrimitiveComponent
@@ -33,47 +41,92 @@ class OGINTERACTIONS_API UOGInteractableComponent_Base : public UPrimitiveCompon
 protected:
 	UOGInteractableComponent_Base();
 
+	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 public:
 	/**
 	 * @brief Set the parameters for querying and updating your Interactable. These will be available when updating conveyance.
 	 * @param Id A Unique tag to identify this OGInteractableComponent from others on the same actor. Will be added to the queried volume to back-reference this component
 	 * @param InQueryVolume The volume you use to query this interactable. If provided, will always be used to query.
 	 * @param InPhysicalRepresentation A mesh, skeletal mesh, etc. that represents this interactable. If the only option provided, it will be used to query. Otherwise it will be available when updating conveyance.
+	 * @param CanInteract called to determine if this component can be interacted with 
+	 * @param OnInteract called when an interaction is successful
+	 * @param OnInteractFailed called when an interaction failed
+	 * @param OnDisabledChanged called when disabled changes
+	 * @param OnUIStateChanged called whenever the visual conveyance state has changed  
+	 * @param GetUIState_OnHover called when the user is hovering this
+	 * @param GetUIState_OnFocus called when the user has focused this
+	 * @param GetUIState_OnReturnToDefault called when the user is not pending an interaction
 	 */
-	UFUNCTION(BlueprintCallable)
-	void Initialize(FName Id, UShapeComponent* InQueryVolume = nullptr, UMeshComponent* InPhysicalRepresentation = nullptr);
+	UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="CanInteract, OnInteract, OnInteractFailed, OnDisabledChanged, OnUIStateChanged, GetUIState_OnHover, GetUIState_OnFocus, GetUIState_OnReturnToDefault"))
+	void Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation,
+		FCanInteractDelegate CanInteract,
+		FOnInteractionEventDelegate OnInteract,
+		FOnInteractionEventDelegate OnInteractFailed,
+		FOnChangeStateNotificationDelegate OnDisabledChanged,
+		FOnUIStateChangedDelegate OnUIStateChanged,
+		FGetUIStateDelegate GetUIState_OnHover,
+		FGetUIStateDelegate GetUIState_OnFocus,
+		FGetUIStateDelegate GetUIState_OnReturnToDefault
+	);
+	
+	/**
+	 * @brief Sets only Delegates. This is helpful for creating default handling in a base BP Implementation of this component
+	 * @param CanInteract called to determine if this component can be interacted with 
+	 * @param OnInteract called when an interaction is successful
+	 * @param OnInteractFailed called when an interaction failed
+	 * @param OnDisabledChanged called when disabled changes
+	 * @param OnUIStateChanged called whenever the visual conveyance state has changed  
+	 * @param GetUIState_OnHover called when the user is hovering this
+	 * @param GetUIState_OnFocus called when the user has focused this
+	 * @param GetUIState_OnReturnToDefault called when the user is not pending an interaction
+	 */
+	UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="CanInteract, OnInteract, OnInteractFailed, OnDisabledChanged, OnUIStateChanged, GetUIState_OnHover, GetUIState_OnFocus, GetUIState_OnReturnToDefault"))
+	void InitializeDelegates(
+		FCanInteractDelegate CanInteract,
+		FOnInteractionEventDelegate OnInteract,
+		FOnInteractionEventDelegate OnInteractFailed,
+		FOnChangeStateNotificationDelegate OnDisabledChanged,
+		FOnUIStateChangedDelegate OnUIStateChanged,
+		FGetUIStateDelegate GetUIState_OnHover,
+		FGetUIStateDelegate GetUIState_OnFocus,
+		FGetUIStateDelegate GetUIState_OnReturnToDefault
+	);
 
 	/**
-	 * @brief Tests if CanInteract returns true, and interacts if so.
-	 * Triggers OnInteract or OnInteractFailed
-	 * @return whether interact was successful.
+	 * @brief (Server) Tests if CanInteract returns true, and interacts if so.
+	 * Triggers (Server) OnInteract or (Server) OnInteractFailed
 	 */
-	UFUNCTION(BlueprintCallable)
-	bool TryInteract(AActor* Interactor);
+	UFUNCTION(BlueprintCallable, Server, Reliable)
+	void TryInteract(AActor* Interactor);
+
+	UFUNCTION(BlueprintPure)
+	bool GetIsDisabled() const { return bDisabled; };
 
 	// TODO: This should be a global setting, not a per-interactable?
 	// Override in game file with expected behavior
 	UPROPERTY(EditDefaultsOnly)
 	FGameplayTag InteractionTriggerType = OccamsGamkit::Interactions::Raycast;
 
-	// TODO: Should CanInteract live here and be implemented the same way?
-
 #pragma region Triggers
 	////////////////////////////////////////
 	//// Triggers to change UI State, called from InteractorComponent
+	///		Triggers are only visual refreshes (not networked).
+	///		If you want a different visual outcome from passive player interactions change rebind
+	///		the Get(Hover/Focus/ReturnToDefault)State Delegates for your client
 
 	// Hover, mirrors UI "Hover", as in your "mouse" (i.e., interaction vector) has intersected the interactable
 	UFUNCTION(BlueprintCallable)
-	void TriggerHover(AActor* InInstigator);
+	void TriggerHover(const AActor* InInstigator);
 	UFUNCTION(BlueprintCallable)
-	void TriggerHoverEnd(AActor* InInstigator);
+	void TriggerHoverEnd(const AActor* InInstigator);
 
 	// Hover, mirrors UI "Focus", as in you have "clicked" (i.e., interacted) with an interactable that can be selected
 	// (This is not wired up by default, your input component will have to hook into this logic)
 	UFUNCTION(BlueprintCallable)
-	void TriggerFocus(AActor* InInstigator);
+	void TriggerFocus(const AActor* InInstigator);
 	UFUNCTION(BlueprintCallable)
-	void TriggerFocusEnd(AActor* InInstigator);
+	void TriggerFocusEnd(const AActor* InInstigator);
 
 	UFUNCTION(BlueprintCallable)
 	void TriggerUIStateDefaultRefresh();
@@ -92,7 +145,7 @@ public:
 	UPROPERTY()
 	FGetUIStateDelegate OnHoverDelegate;
 	UFUNCTION(BlueprintPure)
-	FGameplayTag GetHoverStateFor(AActor* Interactor) const;
+	FGameplayTag GetHoverStateFor(const AActor* Interactor) const;
 	UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Delegate: GetUIState_OnHover"))
 	void SetOnHoverDelegate(const FGetUIStateDelegate& GetUIState_OnHover);
 
@@ -100,7 +153,7 @@ public:
 	UPROPERTY()
 	FGetUIStateDelegate OnFocusDelegate;
 	UFUNCTION(BlueprintPure)
-	FGameplayTag GetFocusStateFor(AActor* Interactor) const;
+	FGameplayTag GetFocusStateFor(const AActor* Interactor) const;
 	UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Delegate: GetUIState_OnFocus"))
 	void SetOnFocusDelegate(const FGetUIStateDelegate& GetUIState_OnFocus);
 
@@ -129,6 +182,12 @@ public:
 	// DECLARE_BP_SETTABLE_DELEGATE_PROPERTY(FCanInteractDelegate, CanInteract, GetCanInteract);
 	UPROPERTY()
 	FCanInteractDelegate CanInteractDelegate;
+
+	/**
+	 * @brief Checks whether the actor is interactable.
+	 *		  Final check occurs on server, ensure client state is up-to-date to avoid mixed messaging
+	 * @return Whether this component can be interacted with
+	 */
 	UFUNCTION(BlueprintPure)
 	bool CanInteract(const AActor* Interactor) const;
 	UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Delegate: CanInteract"))
@@ -155,9 +214,12 @@ public:
 
 #pragma endregion Delegates
 
-	// Extend this in your own code to handle the Disabled case
-	// I would expect this to involve disabling collision, etc
-	UFUNCTION(BlueprintCallable)
+	/**
+	 * @brief (Server) Extend this in your own code to handle the Disabled case
+	 *		  I would expect this to involve disabling collision, etc.
+	 * @param bInDisabled 
+	 */
+	UFUNCTION(BlueprintCallable, Server, Reliable)
 	void SetDisabled(bool bInDisabled);
 
 	// When setting FGameplayTag, priority determines what level of state you can clear to replace
@@ -173,7 +235,12 @@ public:
 	TObjectPtr<UMeshComponent> PhysicalRepresentation;
 
 protected:
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing="OnRep_OnDisabledChanged")
 	bool bDisabled = false;
+
+	// We need to reliably trigger bDisabledUpdates, so it is the only OnRep controlled property
+	UFUNCTION()
+	void OnRep_OnDisabledChanged();
 
 private:
 	// This is not initialized until first hover
@@ -207,6 +274,10 @@ private:
 	// Alerts owner and broadcasts to listeners
 	void OnUIStateChange() const;
 
-	FGameplayTag TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, AActor* Interactor, FString CallingFunction) const;
-	void TryExecuteInteractEventDelegate(const FOnInteractionEventDelegate& InDelegate, AActor* Interactor, FString CallingFunction) const;
+	FGameplayTag TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, const AActor* Interactor, FString CallingFunction) const;
+
+	UFUNCTION()
+	void TryExecute_OnInteractDelegate(AActor* Interactor) const;
+	UFUNCTION()
+	void TryExecute_OnInteractFailedDelegate(AActor* Interactor) const;
 };

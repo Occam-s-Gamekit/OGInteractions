@@ -20,51 +20,52 @@ void UOGInteractorComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (const UCameraComponent* OwnerCamera = GetOwner()->FindComponentByClass<UCameraComponent>())
+	// Only Raycast locally
+	auto* Owner = Cast<APawn>(GetOwner());
+	if (Owner && Owner->IsLocallyControlled())
 	{
-		const FVector StartTrace = OwnerCamera->GetComponentLocation();
-		const FVector EndTrace = StartTrace + (OwnerCamera->GetForwardVector() * RaycastRange);
-		FHitResult HitResult;
-		
-		if (UKismetSystemLibrary::LineTraceSingle(
-			GetWorld(), StartTrace, EndTrace, UEngineTypes::ConvertToTraceType(OG_ECC_INTERACTABLE), false, {},
-			EDrawDebugTrace::None, HitResult, true
-		))
+		if (const UCameraComponent* OwnerCamera = GetOwner()->FindComponentByClass<UCameraComponent>())
 		{
-			// if (auto* AsInteractable = Cast<UOGInteractableComponent_Base>(HitResult.Component))
-			// if (HitResult.Component->ComponentHasTag(OccamsGamkit::Interactions::QueryableComponent.GetTag().GetTagName()))
-			// if (auto* AsInteractableComp = Cast<UOGInteractableComponent_Base>(HitResult.Component->GetOuter()))
-			// if (auto* AsInteractableComp = Cast<UOGInteractableComponent_Base>(HitResult.Component->GetAttachParent()))
-			if (HitResult.Component->ComponentHasTag(OccamsGamkit::Interactions::InteractableComponent::QueryVolume.GetTag().GetTagName()))
+			const FVector StartTrace = OwnerCamera->GetComponentLocation();
+			const FVector EndTrace = StartTrace + (OwnerCamera->GetForwardVector() * RaycastRange);
+			FHitResult HitResult;
+			
+			if (UKismetSystemLibrary::LineTraceSingle(
+				GetWorld(), StartTrace, EndTrace, UEngineTypes::ConvertToTraceType(OG_ECC_INTERACTABLE), false, {},
+				EDrawDebugTrace::None, HitResult, true
+			))
 			{
-				// If a component is tagged with the QueryVolume tag, as above, it should also have an ID tag.
-				auto IdTag = HitResult.Component->ComponentTags.FindByPredicate([](FName Tag)
+				if (HitResult.Component->ComponentHasTag(OccamsGamkit::Interactions::InteractableComponent::QueryVolume.GetTag().GetTagName()))
 				{
-					return Tag.ToString().StartsWith(OccamsGamkit::Interactions::InteractableComponent::ComponentId.GetTag().ToString());
-				});
-
-				if (IdTag)
-				{
-					auto FoundComps = HitResult.GetActor()->GetComponentsByTag(UOGInteractableComponent_Base::StaticClass(), *IdTag);
-					
-					if (UOGInteractableComponent_Base* AsInteractableComp = FoundComps.IsValidIndex(0)
-						? Cast<UOGInteractableComponent_Base>(FoundComps[0])
-						: nullptr)
+					// If a component is tagged with the QueryVolume tag, as above, it should also have an ID tag.
+					auto IdTag = HitResult.Component->ComponentTags.FindByPredicate([](FName Tag)
 					{
-						SetInteractionCandidate(AsInteractableComp);
+						return Tag.ToString().StartsWith(OccamsGamkit::Interactions::InteractableComponent::ComponentId.GetTag().ToString());
+					});
+
+					if (IdTag)
+					{
+						auto FoundComps = HitResult.GetActor()->GetComponentsByTag(UOGInteractableComponent_Base::StaticClass(), *IdTag);
+						
+						if (UOGInteractableComponent_Base* AsInteractableComp = FoundComps.IsValidIndex(0)
+							? Cast<UOGInteractableComponent_Base>(FoundComps[0])
+							: nullptr)
+						{
+							SetInteractionCandidate(AsInteractableComp);
+						}
 					}
+				}
+				else if (InteractionCandidate)
+				{
+					// Hit result exists, and isn't interactable
+					ClearInteractionCandidate();
 				}
 			}
 			else if (InteractionCandidate)
 			{
-				// Hit result exists, and isn't interactable
+				// No hit result
 				ClearInteractionCandidate();
 			}
-		}
-		else if (InteractionCandidate)
-		{
-			// No hit result
-			ClearInteractionCandidate();
 		}
 	}
 }

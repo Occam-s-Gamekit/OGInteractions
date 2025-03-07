@@ -15,21 +15,21 @@ APlayerController* UOGInteractions_FunctionLibrary::GetLocalPlayerController(con
 	return Player ? Player->PlayerController : nullptr;
 }
 
-UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(AActor* Actor)
+UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(const AActor* Actor)
 {
 	return GetInteractorComponent(Cast<APawn>(Actor));
 }
 
-UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(APlayerController* PlayerController)
+UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(const APlayerController* PlayerController)
 {
 	return GetInteractorComponent(PlayerController->GetPawn());
 }
 
-UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(APawn* Pawn)
+UOGInteractorComponent* UOGInteractions_FunctionLibrary::GetInteractorComponent(const APawn* Pawn)
 {
-	if (const auto* AsInteractor = Cast<IOGInteractorInterface>(Pawn))
-		return AsInteractor->GetInteractorComponent();
+	if (Pawn && Pawn->Implements<UOGInteractorInterface>())
+		return IOGInteractorInterface::Execute_GetInteractorComponent(Pawn);
 
-	UE_LOG(LogOccamsGamekit_Interactions, Warning, TEXT("OGInteractions_FunctionLibrary::GetInteractorComponent: Pawn does not implement IOGInteractor"));
+	ensureAlwaysMsgf(!Pawn, TEXT("OGInteractions_FunctionLibrary::GetInteractorComponent: Pawn %s does not implement IOGInteractor"), *GetNameSafe(Pawn));
 	return nullptr;
 }

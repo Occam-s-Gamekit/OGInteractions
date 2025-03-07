@@ -21,5 +21,6 @@ class OGINTERACTIONS_API IOGInteractorInterface
 	GENERATED_BODY()
 
 public:
-	virtual class UOGInteractorComponent* GetInteractorComponent() const = 0;
+	UFUNCTION(BlueprintNativeEvent)
+	class UOGInteractorComponent* GetInteractorComponent() const;
 };
