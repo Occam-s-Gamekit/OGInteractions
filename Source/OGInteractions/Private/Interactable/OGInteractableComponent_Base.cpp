@@ -23,16 +23,13 @@ void UOGInteractableComponent_Base::GetLifetimeReplicatedProps(TArray<FLifetimeP
 }
 
 void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation,
-	FCanInteractDelegate CanInteract,
-	FOnInteractionEventDelegate OnInteract,
-	FOnInteractionEventDelegate OnInteractFailed,
+	TArray<FOGInteractableComponent_BehaviorSet> BehaviorBindings,
 	FOnChangeStateNotificationDelegate OnDisabledChanged,
 	FOnUIStateChangedDelegate OnUIStateChanged,
 	FGetUIStateDelegate GetUIState_OnHover,
 	FGetUIStateDelegate GetUIState_OnFocus,
-	FGetUIStateDelegate GetUIState_OnReturnToDefault
-)
-{
+	FGetUIStateDelegate GetUIState_DefaultState
+) {
 	// These are initialized via inputs always
 	QueryVolume = InQueryVolume;
 	PhysicalRepresentation = InPhysicalRepresentation;
@@ -41,7 +38,7 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 	const FString IdString = FString::Printf(TEXT("%s_%s"), *IdPrefix, *Id.ToString());
 	const FName IdToUse = FName(*IdString);
 	ComponentTags.AddUnique(IdToUse);
-
+	
 	// We only set one of the two to be queryable
 	if (InQueryVolume)
 	{
@@ -61,6 +58,15 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 	}
 
 	ensureAlwaysMsgf(QueryVolume || PhysicalRepresentation, TEXT("UOGInteractableComponent_Base::Initialize - Needs either a volume or a mesh"));
+	
+	ensureAlwaysMsgf(BehaviorBindings.Num() > 0, TEXT("Without bindings this Interactable will have no behaviors, %s-%s on actor %s"), *GetNameSafe(this), *IdString, *GetNameSafe(GetOwner()));
+	InteractBehaviors.Empty();
+	InteractBehaviors.Reserve(BehaviorBindings.Num());
+	for (auto& BehaviorBinding : BehaviorBindings)
+	{
+		BehaviorBinding.AssociatedComponentId = Id;
+		InteractBehaviors.Add(BehaviorBinding.InputAction, BehaviorBinding);
+	}
 
 	/*
 	 * TODO: Only raycast has been implemented
@@ -76,52 +82,44 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 	}
 	*/
 	InitializeDelegates(
-		CanInteract,
-		OnInteract,
-		OnInteractFailed,
 		OnDisabledChanged,
 		OnUIStateChanged,
 		GetUIState_OnHover,
 		GetUIState_OnFocus,
-		GetUIState_OnReturnToDefault
+		GetUIState_DefaultState
 	);
 }
 
-void UOGInteractableComponent_Base::InitializeDelegates(FCanInteractDelegate CanInteract, FOnInteractionEventDelegate OnInteract, FOnInteractionEventDelegate OnInteractFailed, FOnChangeStateNotificationDelegate OnDisabledChanged, FOnUIStateChangedDelegate OnUIStateChanged, FGetUIStateDelegate GetUIState_OnHover, FGetUIStateDelegate GetUIState_OnFocus, FGetUIStateDelegate GetUIState_OnReturnToDefault)
+void UOGInteractableComponent_Base::InitializeDelegates(
+	FOnChangeStateNotificationDelegate OnDisabledChanged, FOnUIStateChangedDelegate OnUIStateChanged, FGetUIStateDelegate GetUIState_OnHover, FGetUIStateDelegate GetUIState_OnFocus, FGetUIStateDelegate GetUIState_DefaultState)
 {
-
-	if (CanInteract.IsBound())					{ SetCanInteractDelegate(CanInteract); }
-	if (OnInteract.IsBound())					{ SetOnInteractDelegate(OnInteract); }
-	if (OnInteractFailed.IsBound()) 			{ SetOnInteractFailedDelegate(OnInteractFailed); }
 	if (OnDisabledChanged.IsBound())			{ SetOnDisabledChangedDelegate(OnDisabledChanged); }
 	if (OnUIStateChanged.IsBound())				{ SetOnUIStateChangedDelegate(OnUIStateChanged); }
 	if (GetUIState_OnHover.IsBound())			{ SetOnHoverDelegate(GetUIState_OnHover); }
 	if (GetUIState_OnFocus.IsBound())			{ SetOnFocusDelegate(GetUIState_OnFocus); }
-	if (GetUIState_OnReturnToDefault.IsBound()) { SetOnReturnToDefaultDelegate(GetUIState_OnReturnToDefault); }
+	if (GetUIState_DefaultState.IsBound())		{ SetGetDefaultStateDelegate(GetUIState_DefaultState); }
 
-	if (OnReturnToDefaultDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
+	if (GetDefaultStateDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
 	{
 		TriggerUIStateDefaultRefresh();
 	}
 }
 
-
-// TODO: This is a basic interact, but we may want to add a parameter for what Kind of interact
-//		 (Like, should this component do the work for Overcooked? A->Grab, X->Use? Would/could that work?
-//		 Perhaps the "CanInteract/TryInteract" should live separately from this InteractableComponent?
-//		 (Separate the Logic from the Volume, so then you'd pass a group of delegates for X, A, and Y on the same object)
-void UOGInteractableComponent_Base::TryInteract_Implementation(AActor* Interactor)
+void UOGInteractableComponent_Base::TryInteract_Implementation(AActor* Interactor, const FGameplayTag& InputAction)
 {
 	if (!Interactor)
 		return;
 
-	if (CanInteract(Interactor))
+	if (const auto* Behavior = InteractBehaviors.Find(InputAction))
 	{
-		TryExecute_OnInteractDelegate(Interactor);
-	}
-	else
-	{
-		TryExecute_OnInteractFailedDelegate(Interactor);
+		if (Behavior->TryExecuteDelegate_CanInteract(Interactor))
+		{
+			Behavior->TryExecuteDelegate_OnInteractSucceeded(Interactor);
+		}
+		else
+		{
+			Behavior->TryExecuteDelegate_OnInteractFailed(Interactor);
+		}
 	}
 }
 
@@ -199,39 +197,16 @@ void UOGInteractableComponent_Base::SetOnFocusDelegate(const FGetUIStateDelegate
 FGameplayTag UOGInteractableComponent_Base::GetDefaultStateForLocalPlayer() const
 {
 	const auto* LocalPC = UOGInteractions_FunctionLibrary::GetLocalPlayerController(this);
-	return TryExecuteGetterDelegate(OnReturnToDefaultDelegate, LocalPC ? LocalPC->GetPawn() : nullptr, "GetDefaultState");
+	return TryExecuteGetterDelegate(GetDefaultStateDelegate, LocalPC ? LocalPC->GetPawn() : nullptr, "GetDefaultState");
 }
-void UOGInteractableComponent_Base::SetOnReturnToDefaultDelegate(const FGetUIStateDelegate& GetUIState_OnReturnToDefault)
+void UOGInteractableComponent_Base::SetGetDefaultStateDelegate(const FGetUIStateDelegate& GetUIState_DefaultState)
 {
-	OnReturnToDefaultDelegate = GetUIState_OnReturnToDefault;
+	GetDefaultStateDelegate = GetUIState_DefaultState;
 }
 
 void UOGInteractableComponent_Base::SetOnUIStateChangedDelegate(const FOnUIStateChangedDelegate& OnUIStateChanged)
 {
 	OnUIStateChangedDelegate = OnUIStateChanged;
-}
-
-bool UOGInteractableComponent_Base::CanInteract(const AActor* Interactor) const
-{
-	if (ensureAlwaysMsgf(CanInteractDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::CanInteract - Delegate for %s has not been set"), *GetNameSafe(GetOwner())))
-	{
-		return CanInteractDelegate.Execute(Interactor);
-	}
-	return false;
-}
-void UOGInteractableComponent_Base::SetCanInteractDelegate(const FCanInteractDelegate& CanInteract)
-{
-	CanInteractDelegate = CanInteract;
-}
-
-void UOGInteractableComponent_Base::SetOnInteractDelegate(const FOnInteractionEventDelegate& OnInteract)
-{
-	OnInteractDelegate = OnInteract;
-}
-
-void UOGInteractableComponent_Base::SetOnInteractFailedDelegate(const FOnInteractionEventDelegate& OnInteractFailed)
-{
-	OnInteractFailedDelegate = OnInteractFailed;
 }
 
 void UOGInteractableComponent_Base::SetOnDisabledChangedDelegate(const FOnChangeStateNotificationDelegate& OnDisabledChanged)
@@ -248,7 +223,6 @@ const FGameplayTag& UOGInteractableComponent_Base::SetUIState(const FGameplayTag
 	}
 	return UIState;
 }
-
 
 ////////////////////////////////////////
 ///// Begin Listeners
@@ -308,20 +282,6 @@ FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetU
 	return FGameplayTag::EmptyTag;
 }
 
-void UOGInteractableComponent_Base::TryExecute_OnInteractDelegate(AActor* Interactor) const
-{
-	if (ensureAlwaysMsgf(OnInteractDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::TryExecuteOnInteractDelegate - Delegate for %s has not been set"), *GetNameSafe(this)))
-	{
-		OnInteractDelegate.Execute(Interactor);
-	}
-}
-void UOGInteractableComponent_Base::TryExecute_OnInteractFailedDelegate(AActor* Interactor) const
-{
-	if (ensureAlwaysMsgf(OnInteractFailedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::TryExecuteOnInteractFailedDelegate - Delegate for %s has not been set"), *GetNameSafe(this)))
-	{
-		OnInteractFailedDelegate.Execute(Interactor);
-	}
-}
 
 void UOGInteractableComponent_Base::OnRep_OnDisabledChanged()
 {

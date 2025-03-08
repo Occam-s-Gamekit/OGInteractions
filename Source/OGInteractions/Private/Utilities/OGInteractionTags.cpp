@@ -12,12 +12,21 @@ namespace OccamsGamkit
 			UE_DEFINE_GAMEPLAY_TAG(ComponentId,				"OccamsGamekit.Interactions.InteractableComponent.ComponentId") // Prefix to find IDs
 		}
 		
-		namespace UIStateExamples
+		namespace Examples
 		{
-			UE_DEFINE_GAMEPLAY_TAG(None,					"OccamsGamekit.Interactions.UIStateExamples.None");
-			UE_DEFINE_GAMEPLAY_TAG(Hover,					"OccamsGamekit.Interactions.UIStateExamples.Hover");
-			UE_DEFINE_GAMEPLAY_TAG(Callout,					"OccamsGamekit.Interactions.UIStateExamples.Callout");
-			UE_DEFINE_GAMEPLAY_TAG(Invalid,					"OccamsGamekit.Interactions.UIStateExamples.Invalid");
+			namespace UIState
+			{
+				UE_DEFINE_GAMEPLAY_TAG(None,					"OccamsGamekit.Interactions.Examples.UIState.None");
+				UE_DEFINE_GAMEPLAY_TAG(Hover,					"OccamsGamekit.Interactions.Examples.UIState.Hover");
+				UE_DEFINE_GAMEPLAY_TAG(Callout,					"OccamsGamekit.Interactions.Examples.UIState.Callout");
+				UE_DEFINE_GAMEPLAY_TAG(Invalid,					"OccamsGamekit.Interactions.Examples.UIState.Invalid");
+			}
+
+			namespace InputActions
+			{
+				UE_DEFINE_GAMEPLAY_TAG(Interact_E,				"OccamsGamekit.Interactions.Examples.E");
+				UE_DEFINE_GAMEPLAY_TAG(Interact_F,				"OccamsGamekit.Interactions.Examples.F");
+			}
 		}
 	}
 }

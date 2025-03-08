@@ -5,7 +5,6 @@
 
 #include "Interactor/OGInteractorComponent.h"
 #include "Interactor/OGInteractorInterface.h"
-#include "Utilities/OGInteractions_Types.h"
 
 
 APlayerController* UOGInteractions_FunctionLibrary::GetLocalPlayerController(const UObject* WorldContextObject)

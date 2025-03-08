@@ -12,14 +12,22 @@ namespace OccamsGamkit
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(QueryVolume);
 			UE_DECLARE_GAMEPLAY_TAG_EXTERN(ComponentId);
 		}
-		
-		namespace UIStateExamples
+
+		namespace Examples
 		{
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(None);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Hover);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Callout);
-			UE_DECLARE_GAMEPLAY_TAG_EXTERN(Invalid);
+			namespace UIState
+			{
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(None);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Hover);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Callout);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Invalid);
+			}
+
+			namespace InputActions
+			{
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_E);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_F);
+			}
 		}
 	}
 }
-
