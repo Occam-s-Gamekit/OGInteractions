@@ -3,28 +3,16 @@
 
 #include "Interactable/OGInteractableComponent_BehaviorSet.h"
 
-
-bool FOGInteractableComponent_BehaviorSet::TryExecuteDelegate_CanInteract(AActor* Interactor) const
+bool FOGInteractableComponent_BehaviorSet_Base::TryExecuteDelegate_CanInteract(AActor* Interactor) const
 {
-	if (ensureAlwaysMsgf(CanInteractDelegate.IsBound(), TEXT("FOGInteractableComponent_BehaviorSet::TryExecuteDelegate_CanInteract - Delegate for %s has not been set"), *AssociatedComponentId.ToString()))
+	if (ensureAlwaysMsgf(CanInteractDelegate.IsBound(), TEXT("FOGInteractableComponent_BehaviorSet_Base::TryExecuteDelegate_CanInteract - Delegate for %s has not been set"), *AssociatedComponentId.ToString()))
 	{
 		return CanInteractDelegate.Execute(Interactor);
 	}
 	return false;
 }
 
-void FOGInteractableComponent_BehaviorSet::TryExecuteDelegate_OnInteractSucceeded(AActor* Interactor) const
-{
-	if (ensureAlwaysMsgf(OnInteractSucceededDelegate.IsBound(), TEXT("FOGInteractableComponent_BehaviorSet::TryExecuteDelegate_OnInteractSucceeded - Delegate for %s has not been set"), *AssociatedComponentId.ToString()))
-	{
-		OnInteractSucceededDelegate.Execute(Interactor);
-	}
-}
+DEFINE_INTERACTION_DELEGATE_IMPLEMENTATION(FOGInteractableComponent_BehaviorSet_Triggered, Succeeded, true);
+DEFINE_INTERACTION_DELEGATE_IMPLEMENTATION(FOGInteractableComponent_BehaviorSet_Triggered, Failed, false);
 
-void FOGInteractableComponent_BehaviorSet::TryExecuteDelegate_OnInteractFailed(AActor* Interactor) const
-{
-	if (OnInteractFailedDelegate.IsBound())
-	{
-		OnInteractFailedDelegate.Execute(Interactor);
-	}
-}
+

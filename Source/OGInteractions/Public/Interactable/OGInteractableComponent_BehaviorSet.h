@@ -3,41 +3,49 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameplayTagContainer.h"
 #include "Components/ActorComponent.h"
+#include "Interactable/OGInteractable_BehaviorSet_Helpers.h"
 #include "OGInteractableComponent_BehaviorSet.generated.h"
 
 DECLARE_DYNAMIC_DELEGATE_RetVal_OneParam(bool, FCanInteractDelegate, const AActor*, Interactor);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnInteractionEventDelegate, AActor*, Interactor);
 
-/*
- * BehaviorSets define callbacks that you should call as necessary for your logic.
- */
 USTRUCT(BlueprintType)
-struct OGINTERACTIONS_API FOGInteractableComponent_BehaviorSet
+struct OGINTERACTIONS_API FOGInteractableComponent_BehaviorSet_Base
 {
 	GENERATED_BODY()
-
-
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FGameplayTag InputAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FCanInteractDelegate CanInteractDelegate;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FOnInteractionEventDelegate OnInteractSucceededDelegate;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay)
-	FOnInteractionEventDelegate OnInteractFailedDelegate;
+	bool TryExecuteDelegate_CanInteract(AActor* Interactor) const;
+
+	FName AssociatedComponentId;
+};
+
+/*
+ * This concept was an extension of the delegate system used for the visual callbacks
+ * It is being used in the DevelopmentInputPassthrough as an easy way to pair inputs to behaviors
+ * however, it's a little to open-ended to be surfaced to any user in a BP setting
+ */
+
+/*
+ * Maps to the callbacks you would want to use if you were using a "pressed" input
+ */
+USTRUCT(BlueprintType)
+struct OGINTERACTIONS_API FOGInteractableComponent_BehaviorSet_Triggered : public FOGInteractableComponent_BehaviorSet_Base
+{
+	GENERATED_BODY()
 
 public:
-	bool TryExecuteDelegate_CanInteract(AActor* Interactor) const;
-	void TryExecuteDelegate_OnInteractSucceeded(AActor* Interactor) const;
-	void TryExecuteDelegate_OnInteractFailed(AActor* Interactor) const;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FOnInteractionEventDelegate OnInteract_SucceededDelegate;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay)
+	FOnInteractionEventDelegate OnInteract_FailedDelegate;
 
-private:
-	friend class UOGInteractableComponent_Base;
-	FName AssociatedComponentId;
+public:
+	DECLARE_INTERACTION_EVENT_DELEGATE_DEFINITION(OnInteract_Succeeded);
+	DECLARE_INTERACTION_EVENT_DELEGATE_DEFINITION(OnInteract_Failed);
 };

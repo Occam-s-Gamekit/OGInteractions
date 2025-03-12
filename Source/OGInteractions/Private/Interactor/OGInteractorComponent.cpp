@@ -110,14 +110,18 @@ void UOGInteractorComponent::ClearInteractionFocus()
 void UOGInteractorComponent::SetInteractionCandidate(UOGInteractableComponent_Base* NewInteractable)
 {
 	const bool bAreSame = InteractionCandidate == NewInteractable;
-	if (InteractionCandidate && !bAreSame)
+	const bool bIsFocused = NewInteractable == InteractionFocus;
+	if (InteractionCandidate && !bAreSame && !bIsFocused)
 	{
 		InteractionCandidate->TriggerHoverEnd(GetOwner());
 	}
 	if (!bAreSame)
 	{
 		InteractionCandidate = NewInteractable;
-		InteractionCandidate->TriggerHover(GetOwner());
+		if (!bIsFocused)
+		{
+			InteractionCandidate->TriggerHover(GetOwner());
+		}
 	}
 }
 
@@ -125,7 +129,10 @@ void UOGInteractorComponent::RemoveInteractionCandidate(UOGInteractableComponent
 {
 	if (InteractionCandidate == OldInteractable)
 	{
-		InteractionCandidate->TriggerHoverEnd(GetOwner());
+		if (InteractionCandidate != InteractionFocus)
+		{
+			InteractionCandidate->TriggerHoverEnd(GetOwner());
+		}
 		InteractionCandidate = nullptr;
 	}
 }
@@ -139,7 +146,10 @@ void UOGInteractorComponent::ClearInteractionCandidate()
 {
 	if (InteractionCandidate)
 	{
-		InteractionCandidate->TriggerHoverEnd(GetOwner());
+		if (InteractionCandidate != InteractionFocus)
+		{
+			InteractionCandidate->TriggerHoverEnd(GetOwner());
+		}
 		InteractionCandidate = nullptr;
 	}
 }

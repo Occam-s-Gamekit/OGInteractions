@@ -24,8 +24,8 @@ namespace OccamsGamkit
 
 			namespace InputActions
 			{
-				UE_DEFINE_GAMEPLAY_TAG(Interact_E,				"OccamsGamekit.Interactions.Examples.E");
-				UE_DEFINE_GAMEPLAY_TAG(Interact_F,				"OccamsGamekit.Interactions.Examples.F");
+				UE_DEFINE_GAMEPLAY_TAG(Interact_Primary,		"OccamsGamekit.Interactions.Examples.PrimaryInteract");
+				UE_DEFINE_GAMEPLAY_TAG(Interact_Secondary,		"OccamsGamekit.Interactions.Examples.SecondaryInteract");
 			}
 		}
 	}

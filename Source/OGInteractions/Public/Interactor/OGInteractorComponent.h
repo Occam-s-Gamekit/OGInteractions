@@ -26,11 +26,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, meta=(EditCondition="InteractionTriggerType == InteractionSystem::InteractionTrigger::Raycast()"))
 	float RaycastRange = 600.f;
 
+	virtual UOGInteractableComponent_Base* GetInteractionFocus() { return InteractionFocus; };
 	virtual void SetInteractionFocus(UOGInteractableComponent_Base* NewInteractable);
 	virtual void RemoveInteractionFocus(UOGInteractableComponent_Base* OldInteractable);
 	virtual UOGInteractableComponent_Base* GetInteractionFocus() const;
 	virtual void ClearInteractionFocus();
 
+	virtual UOGInteractableComponent_Base* GetInteractionCandidate() { return InteractionCandidate; };
 	virtual void SetInteractionCandidate(UOGInteractableComponent_Base* NewInteractable);
 	virtual void RemoveInteractionCandidate(UOGInteractableComponent_Base* OldInteractable);
 	virtual UOGInteractableComponent_Base* GetInteractionCandidate() const;

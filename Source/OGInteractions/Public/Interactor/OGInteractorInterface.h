@@ -6,7 +6,7 @@
 #include "UObject/Interface.h"
 #include "OGInteractorInterface.generated.h"
 
-UINTERFACE()
+UINTERFACE(MinimalAPI)
 class UOGInteractorInterface : public UInterface
 {
 	GENERATED_BODY()

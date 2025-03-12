@@ -26,7 +26,8 @@ public class OGInteractions : ModuleRules
 			new string[]
 			{
 				"Core",
-				"GameplayTags"
+				"GameplayTags",
+				"OGAsync"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

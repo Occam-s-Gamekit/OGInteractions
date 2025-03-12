@@ -23,17 +23,13 @@ void UOGInteractableComponent_Base::GetLifetimeReplicatedProps(TArray<FLifetimeP
 }
 
 void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation,
-	TArray<FOGInteractableComponent_BehaviorSet> BehaviorBindings,
-	FOnChangeStateNotificationDelegate OnDisabledChanged,
-	FOnUIStateChangedDelegate OnUIStateChanged,
-	FGetUIStateDelegate GetUIState_OnHover,
-	FGetUIStateDelegate GetUIState_OnFocus,
-	FGetUIStateDelegate GetUIState_DefaultState
+	const FOGInteractableComponent_VisualDelegates& VisualDelegates
 ) {
 	// These are initialized via inputs always
 	QueryVolume = InQueryVolume;
 	PhysicalRepresentation = InPhysicalRepresentation;
-	
+
+	ComponentId = Id;
 	const FString IdPrefix = OccamsGamkit::Interactions::InteractableComponent::ComponentId.GetTag().GetTagName().ToString();
 	const FString IdString = FString::Printf(TEXT("%s_%s"), *IdPrefix, *Id.ToString());
 	const FName IdToUse = FName(*IdString);
@@ -48,6 +44,11 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 
 		QueryVolume->ComponentTags.Add(OccamsGamkit::Interactions::InteractableComponent::QueryVolume.GetTag().GetTagName());
 		QueryVolume->ComponentTags.AddUnique(IdToUse);
+
+		if (PhysicalRepresentation)
+		{
+			PhysicalRepresentation->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
+		}
 	}
 	else if (InPhysicalRepresentation)
 	{
@@ -58,15 +59,6 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 	}
 
 	ensureAlwaysMsgf(QueryVolume || PhysicalRepresentation, TEXT("UOGInteractableComponent_Base::Initialize - Needs either a volume or a mesh"));
-	
-	ensureAlwaysMsgf(BehaviorBindings.Num() > 0, TEXT("Without bindings this Interactable will have no behaviors, %s-%s on actor %s"), *GetNameSafe(this), *IdString, *GetNameSafe(GetOwner()));
-	InteractBehaviors.Empty();
-	InteractBehaviors.Reserve(BehaviorBindings.Num());
-	for (auto& BehaviorBinding : BehaviorBindings)
-	{
-		BehaviorBinding.AssociatedComponentId = Id;
-		InteractBehaviors.Add(BehaviorBinding.InputAction, BehaviorBinding);
-	}
 
 	/*
 	 * TODO: Only raycast has been implemented
@@ -82,12 +74,14 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 	}
 	*/
 	InitializeDelegates(
-		OnDisabledChanged,
-		OnUIStateChanged,
-		GetUIState_OnHover,
-		GetUIState_OnFocus,
-		GetUIState_DefaultState
+		VisualDelegates.OnDisabledChanged,
+		VisualDelegates.OnUIStateChanged,
+		VisualDelegates.GetUIState_OnHover,
+		VisualDelegates.GetUIState_OnFocus,
+		VisualDelegates.GetUIState_DefaultState
 	);
+
+	WhenInitialized->Fulfill();
 }
 
 void UOGInteractableComponent_Base::InitializeDelegates(
@@ -102,24 +96,6 @@ void UOGInteractableComponent_Base::InitializeDelegates(
 	if (GetDefaultStateDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
 	{
 		TriggerUIStateDefaultRefresh();
-	}
-}
-
-void UOGInteractableComponent_Base::TryInteract_Implementation(AActor* Interactor, const FGameplayTag& InputAction)
-{
-	if (!Interactor)
-		return;
-
-	if (const auto* Behavior = InteractBehaviors.Find(InputAction))
-	{
-		if (Behavior->TryExecuteDelegate_CanInteract(Interactor))
-		{
-			Behavior->TryExecuteDelegate_OnInteractSucceeded(Interactor);
-		}
-		else
-		{
-			Behavior->TryExecuteDelegate_OnInteractFailed(Interactor);
-		}
 	}
 }
 
@@ -275,7 +251,7 @@ void UOGInteractableComponent_Base::OnUIStateChange() const
 	
 FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, const AActor* Interactor, FString CallingFunction) const
 {
-	if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::GetterDelegate - %s Delegate for %s has not been set"), *CallingFunction, *GetNameSafe(this)))
+if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::GetterDelegate - %s Delegate for %s has not been set"), *CallingFunction, *GetNameSafe(this)))
 	{
 		return InDelegate.Execute(Interactor);
 	}
@@ -288,7 +264,6 @@ void UOGInteractableComponent_Base::OnRep_OnDisabledChanged()
 	UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
 	if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
 
-	// Needs to be replicated
 	if (InteractionQueryTarget)
 	{
 		if (bDisabled)
@@ -301,7 +276,7 @@ void UOGInteractableComponent_Base::OnRep_OnDisabledChanged()
 		}
 	}
 
-	if (ensureAlwaysMsgf(OnDisabledChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::SetDisabled - Delegate for %s has not been set"), *GetNameSafe(this)))
+	if (OnDisabledChangedDelegate.IsBound())
 	{
 		OnDisabledChangedDelegate.Execute(bDisabled);
 	}

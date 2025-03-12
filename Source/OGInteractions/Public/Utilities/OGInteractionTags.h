@@ -25,8 +25,8 @@ namespace OccamsGamkit
 
 			namespace InputActions
 			{
-				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_E);
-				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_F);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_Primary);
+				UE_DECLARE_GAMEPLAY_TAG_EXTERN(Interact_Secondary);
 			}
 		}
 	}
