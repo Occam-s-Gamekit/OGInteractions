@@ -81,6 +81,10 @@ void UOGInteractableComponent_Base::Initialize(FName Id, UShapeComponent* InQuer
 		VisualDelegates.GetUIState_DefaultState
 	);
 
+	if (GetDefaultStateDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
+	{
+		TriggerUIStateDefaultRefresh();
+	}
 	WhenInitialized->Fulfill();
 }
 
@@ -92,11 +96,6 @@ void UOGInteractableComponent_Base::InitializeDelegates(
 	if (GetUIState_OnHover.IsBound())			{ SetOnHoverDelegate(GetUIState_OnHover); }
 	if (GetUIState_OnFocus.IsBound())			{ SetOnFocusDelegate(GetUIState_OnFocus); }
 	if (GetUIState_DefaultState.IsBound())		{ SetGetDefaultStateDelegate(GetUIState_DefaultState); }
-
-	if (GetDefaultStateDelegate.IsBound() && OnUIStateChangedDelegate.IsBound())
-	{
-		TriggerUIStateDefaultRefresh();
-	}
 }
 
 void UOGInteractableComponent_Base::TriggerHover(const AActor* InInstigator)
@@ -237,7 +236,7 @@ void UOGInteractableComponent_Base::HandleCursorOverEnd(UPrimitiveComponent* Tou
 
 void UOGInteractableComponent_Base::OnUIStateChange() const
 {
-	if (ensureAlwaysMsgf(OnUIStateChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::OnUIStateChange - Delegate for %s has not been set"), *GetNameSafe(this)))
+	if (ensureAlwaysMsgf(OnUIStateChangedDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::OnUIStateChange - Delegate for %s on %s has not been set"), *GetNameSafe(this), *GetNameSafe(GetOwner())))
 	{
 		OnUIStateChangedDelegate.Execute(GetUIState());
 	}
@@ -251,7 +250,7 @@ void UOGInteractableComponent_Base::OnUIStateChange() const
 	
 FGameplayTag UOGInteractableComponent_Base::TryExecuteGetterDelegate(const FGetUIStateDelegate& InDelegate, const AActor* Interactor, FString CallingFunction) const
 {
-if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::GetterDelegate - %s Delegate for %s has not been set"), *CallingFunction, *GetNameSafe(this)))
+	if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::GetterDelegate - %s Delegate for %s on %s has not been set"), *CallingFunction, *GetNameSafe(this), *GetNameSafe(GetOwner())))
 	{
 		return InDelegate.Execute(Interactor);
 	}
@@ -261,26 +260,29 @@ if (ensureAlwaysMsgf(InDelegate.IsBound(), TEXT("UOGInteractableComponent_Base::
 
 void UOGInteractableComponent_Base::OnRep_OnDisabledChanged()
 {
-	UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
-	if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
-
-	if (InteractionQueryTarget)
+	WhenInitialized->WeakThen(this, [this]()
 	{
-		if (bDisabled)
-		{
-			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Ignore);
-		}
-		else
-		{
-			InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Block);
-		}
-	}
+		UPrimitiveComponent* InteractionQueryTarget = QueryVolume;
+		if (!InteractionQueryTarget) { InteractionQueryTarget = PhysicalRepresentation; }
 
-	if (OnDisabledChangedDelegate.IsBound())
-	{
-		OnDisabledChangedDelegate.Execute(bDisabled);
-	}
-	TriggerUIStateDefaultRefresh();
+		if (InteractionQueryTarget)
+		{
+			if (bDisabled)
+			{
+				InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Ignore);
+			}
+			else
+			{
+				InteractionQueryTarget->SetCollisionResponseToChannel(OG_ECC_INTERACTABLE, ECR_Block);
+			}
+		}
+
+		if (OnDisabledChangedDelegate.IsBound())
+		{
+			OnDisabledChangedDelegate.Execute(bDisabled);
+		}
+		TriggerUIStateDefaultRefresh();
+	});
 }
 
 //// End Helpers

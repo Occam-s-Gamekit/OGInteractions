@@ -69,14 +69,13 @@ protected:
 
 public:
 	/**
-	 * This is left Protected so you can implement your own Init function in BP, or call it in C++ if your implementation requires other setup.
 	 * @brief Set the parameters for querying and updating your Interactable. These will be available when updating conveyance.
 	 * @param Id A Unique tag to identify this OGInteractableComponent from others on the same actor. Will be added to the queried volume to back-reference this component
 	 * @param InQueryVolume The volume you use to query this interactable. If provided, will always be used to query.
 	 * @param InPhysicalRepresentation A mesh, skeletal mesh, etc. that represents this interactable. If the only option provided, it will be used to query. Otherwise it will be available when updating conveyance.
 	 * @param VisualDelegates Container for optional visual to pass into the InteractionComponent.
 	 */
-	UFUNCTION(BlueprintCallable, meta=(AutoCreateRefTerm="VisualDelegates", AdvancedDisplay="VisualDelegates", BlueprintProtected))
+	UFUNCTION(BlueprintCallable, meta=(AutoCreateRefTerm="VisualDelegates", AdvancedDisplay="VisualDelegates"))
 	virtual void Initialize(FName Id, UShapeComponent* InQueryVolume, UMeshComponent* InPhysicalRepresentation,
 		const FOGInteractableComponent_VisualDelegates& VisualDelegates
 	);
@@ -200,6 +199,7 @@ public:
 	void SetDisabled(bool bInDisabled);
 
 	// When setting FGameplayTag, priority determines what level of state you can clear to replace
+	UFUNCTION(BlueprintCallable)
 	const FGameplayTag& SetUIState(const FGameplayTag& NewState);
 	const FGameplayTag& GetUIState() const { return UIState; }
 
